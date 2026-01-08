@@ -169,7 +169,7 @@ function ProjectModal({ project, isOpen, onClose }) {
                 position: 'relative'
               }}>
                 <img
-                  src={getImagePath(project.image)}
+                  src={project.image}
                   alt={project.title}
                   style={{
                     width: '100%',
@@ -396,7 +396,7 @@ export default function PersonalProjects() {
                   position: 'relative'
                 }}>
                   <img
-                    src={getImagePath(project.image)}
+                    src={project.image}
                     alt={project.title}
                     style={{
                       width: '100%',

@@ -17,9 +17,11 @@ const experiences = [
       }
     ],
     responsibilities: [
-      'PCB design for TRIOE Boards',
+      
       'Deploying and maintaining applications to university servers',
-      'Consultation services for student and faculty researchers\' projects'
+      'Consultation services for student and faculty researchers\' projects',
+      'Writing research proposals and reports for institutional and external funding',
+      'PCB design for TRIOE Boards'
     ]
   },
   {

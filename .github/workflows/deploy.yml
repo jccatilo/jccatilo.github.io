@@ -27,6 +27,9 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      
+      - name: Add .nojekyll file
+        run: touch dist/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3
         with:

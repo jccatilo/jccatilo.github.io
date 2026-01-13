@@ -343,6 +343,67 @@ export default function Hero() {
         </Suspense>
       </div>
 
+      {/* Hand Tracking Instructions */}
+      {!handPosition && (
+        <motion.div
+          initial={{ opacity: 0, x: -30 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -30 }}
+          style={{
+            position: 'absolute',
+            left: '50px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 3,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(15px)',
+            padding: '25px 30px',
+            borderRadius: '20px',
+            border: '2px solid rgba(0, 212, 255, 0.4)',
+            maxWidth: '320px',
+            boxShadow: '0 10px 40px rgba(0, 212, 255, 0.2)'
+          }}
+        >
+          <motion.div
+            animate={{ scale: [1, 1.15, 1], rotate: [0, 10, -10, 0] }}
+            transition={{ duration: 2.5, repeat: Infinity }}
+            style={{
+              fontSize: '40px',
+              marginBottom: '15px',
+              textAlign: 'center'
+            }}
+          >
+            👋
+          </motion.div>
+          <motion.p
+            style={{
+              color: '#00d4ff',
+              fontSize: '20px',
+              fontWeight: 'bold',
+              marginBottom: '12px',
+              margin: 0,
+              textAlign: 'left'
+            }}
+          >
+            Use Your Hand to Interact
+          </motion.p>
+          <motion.ul
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: '14px',
+              margin: 0,
+              paddingLeft: '20px',
+              lineHeight: 1.8,
+              textAlign: 'left'
+            }}
+          >
+            <li>Move hand to control position</li>
+            <li>Pinch to scale</li>
+            <li>Two hands for rotation</li>
+          </motion.ul>
+        </motion.div>
+      )}
+
       {/* Content */}
       <div style={{
         position: 'relative',

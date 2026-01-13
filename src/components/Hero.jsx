@@ -1,32 +1,270 @@
-import { useRef, Suspense } from 'react'
+import { useRef, Suspense, useState, useEffect, forwardRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Sphere, MeshDistortMaterial } from '@react-three/drei'
 import { motion } from 'framer-motion'
 import { FaGithub, FaEnvelope, FaPhone, FaGlobe } from 'react-icons/fa'
+import { useHandTracking } from '../hooks/useHandTracking'
+import HandVisualization from './HandVisualization'
 
-function AnimatedSphere() {
+function InteractiveObject({ handPosition }) {
   const meshRef = useRef()
+  const targetPosition = useRef({ x: 0, y: 0, z: 0 })
+  const targetRotation = useRef({ x: 0, y: 0 })
+  const targetScale = useRef(1)
+  const isGrabbing = useRef(false)
+  
+  useEffect(() => {
+    if (handPosition && Array.isArray(handPosition) && handPosition.length > 0) {
+      const primaryHand = handPosition[0] // First hand is primary
+      const secondaryHand = handPosition[1] // Second hand if available
+      
+      // GRAB AND DRAG: Use primary hand position directly for position control
+      // Map hand position (0-1) to 3D space coordinates
+      targetPosition.current.x = (primaryHand.x - 0.5) * 4
+      targetPosition.current.y = -(primaryHand.y - 0.5) * 3
+      targetPosition.current.z = (primaryHand.z || 0) * 2 - 1
+      
+      // PINCH TO SCALE: Use pinch distance to control scale
+      // Pinch distance: 0 (pinched) to 1 (open)
+      // Invert so pinching makes it smaller, opening makes it bigger
+      const pinchScale = primaryHand.pinchDistance || 0.5
+      // Scale from 0.5 (min when pinched) to 2.0 (max when open)
+      targetScale.current = 0.5 + pinchScale * 1.5
+      
+      // TWO-HAND SUPPORT: Average position if two hands, or use relative distance for rotation
+      if (secondaryHand) {
+        // Average position of both hands for more stable control
+        targetPosition.current.x = ((primaryHand.x + secondaryHand.x) / 2 - 0.5) * 4
+        targetPosition.current.y = -((primaryHand.y + secondaryHand.y) / 2 - 0.5) * 3
+        targetPosition.current.z = ((primaryHand.z + secondaryHand.z) / 2 || 0) * 2 - 1
+        
+        // Rotation based on relative position of hands
+        const handDiffX = secondaryHand.x - primaryHand.x
+        const handDiffY = secondaryHand.y - primaryHand.y
+        targetRotation.current.y = handDiffX * Math.PI
+        targetRotation.current.x = -handDiffY * Math.PI
+        
+        // Two-hand scale: use average pinch distance
+        const avgPinch = (primaryHand.pinchDistance + secondaryHand.pinchDistance) / 2
+        targetScale.current = 0.5 + avgPinch * 1.5
+      } else {
+        // Single hand: rotation based on position
+        targetRotation.current.y = (primaryHand.x - 0.5) * Math.PI * 2
+        targetRotation.current.x = (primaryHand.y - 0.5) * Math.PI * 2
+      }
+      
+      isGrabbing.current = primaryHand.isPinched
+    } else if (handPosition && !Array.isArray(handPosition)) {
+      // Backward compatibility: single hand object format
+      targetPosition.current.x = (handPosition.x - 0.5) * 4
+      targetPosition.current.y = -(handPosition.y - 0.5) * 3
+      targetPosition.current.z = (handPosition.z || 0) * 2 - 1
+      targetRotation.current.y = (handPosition.x - 0.5) * Math.PI * 2
+      targetRotation.current.x = (handPosition.y - 0.5) * Math.PI * 2
+      targetScale.current = 1 + (handPosition.z || 0) * 1.5
+    } else {
+      // Reset to center and default scale when no hand
+      targetPosition.current = { x: 0, y: 0, z: 0 }
+      targetRotation.current = { x: 0, y: 0 }
+      targetScale.current = 1
+      isGrabbing.current = false
+    }
+  }, [handPosition])
   
   useFrame((state) => {
     if (meshRef.current) {
-      meshRef.current.rotation.x = state.clock.elapsedTime * 0.2
-      meshRef.current.rotation.y = state.clock.elapsedTime * 0.3
+      // GRAB AND DRAG: More direct control (faster interpolation when grabbing)
+      const lerpSpeed = isGrabbing.current ? 0.3 : 0.15
+      
+      // Smoothly interpolate position
+      meshRef.current.position.x += (targetPosition.current.x - meshRef.current.position.x) * lerpSpeed
+      meshRef.current.position.y += (targetPosition.current.y - meshRef.current.position.y) * lerpSpeed
+      meshRef.current.position.z += (targetPosition.current.z - meshRef.current.position.z) * lerpSpeed
+      
+      // Smoothly interpolate rotation
+      meshRef.current.rotation.x += (targetRotation.current.x - meshRef.current.rotation.x) * 0.1
+      meshRef.current.rotation.y += (targetRotation.current.y - meshRef.current.rotation.y) * 0.1
+      
+      // Smoothly interpolate scale (faster when pinching for responsive feel)
+      const scaleSpeed = isGrabbing.current ? 0.2 : 0.1
+      const currentScale = meshRef.current.scale.x
+      const scaleDiff = targetScale.current - currentScale
+      meshRef.current.scale.x += scaleDiff * scaleSpeed
+      meshRef.current.scale.y += scaleDiff * scaleSpeed
+      meshRef.current.scale.z += scaleDiff * scaleSpeed
+      
+      // Auto-rotate when no hand detected
+      if (!handPosition || (Array.isArray(handPosition) && handPosition.length === 0)) {
+        meshRef.current.rotation.x += 0.002
+        meshRef.current.rotation.y += 0.003
+      }
     }
   })
 
   return (
-    <Sphere ref={meshRef} args={[1, 100, 200]} scale={2.5}>
-      <MeshDistortMaterial
-        color="#00d4ff"
-        attach="material"
-        distort={0.5}
-        speed={2}
-        roughness={0.1}
-        metalness={0.8}
-      />
-    </Sphere>
+    <AtomStructure ref={meshRef} />
   )
 }
+
+const AtomStructure = forwardRef(function AtomStructure(props, meshRef) {
+  const groupRef = useRef()
+  const orbit1Ref = useRef()
+  const orbit2Ref = useRef()
+  const orbit3Ref = useRef()
+  const electron1Ref = useRef()
+  const electron2Ref = useRef()
+  const electron3Ref = useRef()
+  
+  useFrame((state) => {
+    if (groupRef.current) {
+      // Rotate electron orbits
+      const time = state.clock.elapsedTime
+      
+      if (orbit1Ref.current) {
+        orbit1Ref.current.rotation.y = time * 0.5
+        orbit1Ref.current.rotation.x = time * 0.3
+      }
+      if (orbit2Ref.current) {
+        orbit2Ref.current.rotation.y = -time * 0.4
+        orbit2Ref.current.rotation.z = time * 0.5
+      }
+      if (orbit3Ref.current) {
+        orbit3Ref.current.rotation.x = time * 0.6
+        orbit3Ref.current.rotation.z = -time * 0.4
+      }
+      
+      // Move electrons along orbits
+      if (electron1Ref.current) {
+        const radius = 1.2
+        electron1Ref.current.position.x = Math.cos(time * 0.5) * radius
+        electron1Ref.current.position.z = Math.sin(time * 0.5) * radius
+        electron1Ref.current.position.y = Math.sin(time * 0.3) * 0.3
+      }
+      if (electron2Ref.current) {
+        const radius = 1.0
+        electron2Ref.current.position.x = Math.cos(-time * 0.4) * radius
+        electron2Ref.current.position.y = Math.sin(-time * 0.4) * radius
+        electron2Ref.current.position.z = Math.cos(time * 0.5) * 0.5
+      }
+      if (electron3Ref.current) {
+        const radius = 1.1
+        electron3Ref.current.position.y = Math.cos(time * 0.6) * radius
+        electron3Ref.current.position.z = Math.sin(time * 0.6) * radius
+        electron3Ref.current.position.x = Math.sin(-time * 0.4) * 0.4
+      }
+    }
+  })
+
+  return (
+    <group ref={(node) => {
+      groupRef.current = node
+      if (meshRef && typeof meshRef === 'function') {
+        meshRef(node)
+      } else if (meshRef) {
+        meshRef.current = node
+      }
+    }}>
+      {/* Nucleus - Central core */}
+      <mesh position={[0, 0, 0]}>
+        <sphereGeometry args={[0.25, 32, 32]} />
+        <meshStandardMaterial
+          color="#00d4ff"
+          emissive="#00d4ff"
+          emissiveIntensity={1.2}
+          metalness={0.9}
+          roughness={0.1}
+        />
+      </mesh>
+      
+      {/* Nucleus glow */}
+      <mesh position={[0, 0, 0]}>
+        <sphereGeometry args={[0.3, 32, 32]} />
+        <meshStandardMaterial
+          color="#00d4ff"
+          emissive="#00d4ff"
+          emissiveIntensity={0.8}
+          transparent
+          opacity={0.4}
+        />
+      </mesh>
+      
+      {/* Electron Orbit 1 - Horizontal */}
+      <group ref={orbit1Ref}>
+        <mesh>
+          <torusGeometry args={[1.2, 0.02, 8, 100]} />
+          <meshStandardMaterial
+            color="#7b2ff7"
+            emissive="#7b2ff7"
+            emissiveIntensity={0.6}
+            transparent
+            opacity={0.5}
+          />
+        </mesh>
+        {/* Electron 1 */}
+        <mesh ref={electron1Ref}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshStandardMaterial
+            color="#ffaa00"
+            emissive="#ffaa00"
+            emissiveIntensity={1.5}
+            metalness={0.8}
+            roughness={0.2}
+          />
+        </mesh>
+      </group>
+      
+      {/* Electron Orbit 2 - Vertical */}
+      <group ref={orbit2Ref}>
+        <mesh>
+          <torusGeometry args={[1.0, 0.02, 8, 100]} rotation={[Math.PI / 2, 0, 0]} />
+          <meshStandardMaterial
+            color="#7b2ff7"
+            emissive="#7b2ff7"
+            emissiveIntensity={0.6}
+            transparent
+            opacity={0.5}
+          />
+        </mesh>
+        {/* Electron 2 */}
+        <mesh ref={electron2Ref}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshStandardMaterial
+            color="#ffaa00"
+            emissive="#ffaa00"
+            emissiveIntensity={1.5}
+            metalness={0.8}
+            roughness={0.2}
+          />
+        </mesh>
+      </group>
+      
+      {/* Electron Orbit 3 - Diagonal */}
+      <group ref={orbit3Ref}>
+        <mesh rotation={[Math.PI / 4, Math.PI / 4, 0]}>
+          <torusGeometry args={[1.1, 0.02, 8, 100]} />
+          <meshStandardMaterial
+            color="#7b2ff7"
+            emissive="#7b2ff7"
+            emissiveIntensity={0.6}
+            transparent
+            opacity={0.5}
+          />
+        </mesh>
+        {/* Electron 3 */}
+        <mesh ref={electron3Ref}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshStandardMaterial
+            color="#ffaa00"
+            emissive="#ffaa00"
+            emissiveIntensity={1.5}
+            metalness={0.8}
+            roughness={0.2}
+          />
+        </mesh>
+      </group>
+    </group>
+  )
+})
 
 function FloatingParticles() {
   const particles = useRef()
@@ -59,6 +297,9 @@ function FloatingParticles() {
 }
 
 export default function Hero() {
+  const [handPosition, setHandPosition] = useState(null)
+  const { isInitialized, error } = useHandTracking(setHandPosition)
+
   const scrollToSection = (id) => {
     const element = document.querySelector(id)
     if (element) {
@@ -94,9 +335,10 @@ export default function Hero() {
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 10, 10]} intensity={1} />
             <pointLight position={[-10, -10, -10]} intensity={0.5} color="#7b2ff7" />
-            <AnimatedSphere />
+            <InteractiveObject handPosition={handPosition} />
             <FloatingParticles />
-            <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />
+            {handPosition && <HandVisualization handData={handPosition} />}
+            {!handPosition && <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />}
           </Canvas>
         </Suspense>
       </div>
